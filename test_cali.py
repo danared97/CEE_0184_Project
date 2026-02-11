@@ -38,7 +38,7 @@ base_box_path = "C:/Users/dredhu01/Box/CEE0189/test_output"
 
 # 3. THE PROCESSING FUNCTION
 def download_and_process(config):
-    print(f"\n>>> Starting: {config['name']}")
+    print(f"\n>>> Processing: {config['name']}")
     if not os.path.exists(config['out_dir']): os.makedirs(config['out_dir'])
 
     dates = pd.date_range(start=config['start'], end=config['end']).strftime('%Y-%m-%d').tolist()
@@ -47,48 +47,52 @@ def download_and_process(config):
     with bm.raster(gdf, product_id=Product.VNP46A2, date_range=dates) as ds:
         data_in_memory = ds['DNB_BRDF-Corrected_NTL'].load()
 
-    # --- HISTOGRAM CALCULATION ---
-    # Define 10 radiance bins from 0 to 100 (adjust ranges as needed for your data)
+    # Define bins: 0-10, 10-20 ... 90-100
     bin_edges = np.linspace(0, 100, 11)
-    # Flatten all pixels/days into one list and count frequencies
-    counts, _ = np.histogram(data_in_memory.values.flatten(), bins=bin_edges)
+    daily_records = []
 
-    # Create a dictionary of bin counts for the CSV
-    hist_data = {f"Bin_{int(bin_edges[i])}-{int(bin_edges[i + 1])}": counts[i] for i in range(len(counts))}
-    # -----------------------------
-
-    avg_brightness = float(data_in_memory.mean())
-
-    # Save daily TIFs
+    # Iterate through each day to get daily stats + daily histogram
     for i, date_val in enumerate(data_in_memory.time.values):
-        date_str = pd.to_datetime(date_val).strftime('%Y%m%d')
-        tif_path = os.path.join(config['out_dir'], f"{config['name']}_{date_str}.tif")
-        data_in_memory.isel(time=i).rio.to_raster(tif_path)
+        date_str = pd.to_datetime(date_val).strftime('%Y-%m-%d')
+        daily_slice = data_in_memory.isel(time=i)
 
-    # Combine basic stats with histogram bins
-    result = {
-        'Area': config['name'],
-        'Start_Date': config['start'],
-        'End_Date': config['end'],
-        'Average_Radiance': avg_brightness
-    }
-    result.update(hist_data)  # Add the histogram columns to the row
-    return result
+        # Calculate histogram for THIS day only
+        counts, _ = np.histogram(daily_slice.values.flatten(), bins=bin_edges)
+        hist_data = {f"Bin_{int(bin_edges[j])}-{int(bin_edges[j + 1])}": counts[j] for j in range(len(counts))}
+
+        # Create the row for this specific day
+        row = {
+            'Area': config['name'],
+            'Date': date_str,
+            'Daily_Avg_Radiance': float(daily_slice.mean())
+        }
+        row.update(hist_data)  # Add the daily histogram bins
+        daily_records.append(row)
+
+        # Save individual TIF
+        tif_name = f"{config['name']}_{date_str.replace('-', '')}.tif"
+        daily_slice.rio.to_raster(os.path.join(config['out_dir'], tif_name))
+
+    print(f"   Finished {len(daily_records)} days for {config['name']}")
+    return daily_records
 
 
-# 3. EXECUTION & MASTER CSV
+# 3. EXECUTION LOOP
 all_results = []
 for config in study_configs:
     try:
-        all_results.append(download_and_process(config))
+        # Extend the list with the multiple rows returned for each area
+        daily_stats = download_and_process(config)
+        all_results.extend(daily_stats)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"!!! Error on {config['name']}: {e}")
 
+# 4. EXPORT MASTER CSV (Will have one row per day per area)
 if all_results:
     master_df = pd.DataFrame(all_results)
-    local_csv = "H:/CEE0189/all_areas_summary.csv"
-    final_box_csv = "C:/Users/dredhu01/Box/CEE0189/test_output/all_areas_summary.csv"
+    local_csv = "H:/CEE0189/daily_analysis_summary.csv"
+    final_box_csv = "C:/Users/dredhu01/Box/CEE0189/test_output/daily_analysis_summary.csv"
 
     master_df.to_csv(local_csv, index=False)
     shutil.copy2(local_csv, final_box_csv)
-    print(f"\nSUCCESS: CSV with histogram data saved to {final_box_csv}")
+    print(f"\nSUCCESS: CSV with daily histogram shifts saved to {final_box_csv}")
