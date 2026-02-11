@@ -9,30 +9,22 @@ import rioxarray
 
 from blackmarble import BlackMarble, Product
 
-# ------------------------------------------------------------------------------
-# 1. Define your region of interest
-# ------------------------------------------------------------------------------
-# input shapefile here
+
+# define region of interest
 study_configs = [
-    #{"name": "Cali", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/cali_test.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/California", "start": "2025-01-01", "end": "2025-02-11"},
-    {"name": "Argentina", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/argentina.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Argentina", "start": "2025-01-01", "end": "2025-03-02"},
-    #{"name": "SouthKorea", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/southkorea.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/SouthKorea", "start": "2025-03-14", "end": "2025-04-03"},
+    {"name": "Cali", "path": "...", "out_dir": "...", "start": "2025-01-01", "end": "2025-02-11"},
+    {"name": "Argentina", "path": "...", "out_dir": "...", "start": "2025-01-01", "end": "2025-03-02"},
+    {"name": "SouthKorea", "path": "...", "out_dir": "...", "start": "2025-03-14", "end": "2025-04-03"},
 ]
 
-# ------------------------------------------------------------------------------
-# 2. Set up the BlackMarble client
-# ------------------------------------------------------------------------------
-# If the environment variable `BLACKMARBLE_TOKEN` is set, it will be used automatically.
-# You can also pass your token directly, but using the environment variable is recommended.
+#set up blackmarble client - need to have an Earthdata access token that allows clearance to LAADS DAAC
 bm = BlackMarble(
     token="...",
     output_directory="...", # Choose any local folder on your C: drive
     output_skip_if_exists=True
 )
-# ------------------------------------------------------------------------------
-# 3. Download VNP46 data from NASA Earthdata
-# ------------------------------------------------------------------------------
-# Function runs through each study area and returns a daily mosaicked TIF output for full area
+
+# Function: runs through each study area and returns a daily mosaicked TIF output for full area
 #Gemini was utilized for lines 63-90 in order to allow for manual image selection when dates were not available - the code
 #runs through the timeline provided, determines if imagery is available for all dates. If it is, then the manifest order
 #is sent to the DAAC. If not, orders are sent individually with missing dates skipped.
@@ -40,7 +32,6 @@ bm = BlackMarble(
 # Ensure "out_dir" is a unique subfolder for each area inside your Box path
 base_box_path = "..."
 
-# 3. THE PROCESSING FUNCTION
 def download_and_process(config):
     print(f"\n>>> Processing: {config['name']}")
     if not os.path.exists(config['out_dir']): os.makedirs(config['out_dir'])
@@ -79,8 +70,6 @@ def download_and_process(config):
 
     return daily_records
 
-
-
 # 3. EXECUTION LOOP
 all_results = []
 for config in study_configs:
@@ -94,8 +83,9 @@ for config in study_configs:
 # 4. EXPORT MASTER CSV (Will have one row per day per area)
 if all_results:
     master_df = pd.DataFrame(all_results)
-    local_csv = "H:/CEE0189/daily_analysis_summary.csv"
-    final_box_csv = "C:/Users/dredhu01/Box/CEE0189/test_output/daily_analysis_summary.csv"
+    local_csv = "..."
+    #was having issues saving to box, this just saves locally and then to box
+    final_box_csv = "..."
 
     master_df.to_csv(local_csv, index=False)
     shutil.copy2(local_csv, final_box_csv)
