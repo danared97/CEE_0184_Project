@@ -23,7 +23,7 @@ study_configs = [
 # If the environment variable `BLACKMARBLE_TOKEN` is set, it will be used automatically.
 # You can also pass your token directly, but using the environment variable is recommended.
 bm = BlackMarble(
-    token="eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6ImRudmFuaHVpcyIsImV4cCI6MTc3NTkzMjA2MSwiaWF0IjoxNzcwNzQ4MDYxLCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.MlsRkLkAEiTovHkM8z2O01LGEnGJozR5cu644CSNh9xZ2o5kUPXNRrdD8-g-X2udn7A9NT48C2ZKc_QICrq0ESfmot7xUSbly-f0VdjBc1go-CNmQgdKOr0pAYvJdrh8FexaMdv2mG0GyBdfQNHIxH5DoHdbpwNjA13CRF0mu_WRlll9_QYLq9iHgRyrqtmX-AG9lwJIfloV7tU-WMf6T_oVGgQKlEwKnxiXoUAl2hEEu1jLrR0cY1OLEuO4M8w6aMdhXndPa4aoSPuSi_KUSc228Wfw8Sb3a75e4RcHpZzZIkL1LWFO0s3G_RDIlCPCNqdpLH7egATIF8pix4GKYA",
+    token="....",
     output_directory="C:/Users/dredhu01/Box/CEE0189/test_output", # Choose any local folder on your C: drive
     output_skip_if_exists=True
 )
@@ -87,7 +87,7 @@ for config in study_configs:
     except Exception as e:
         print(f"!!! Error on {config['name']}: {e}")
 
-# 4. EXPORT MASTER CSV (Will have one row per day per area)
+# 4. export csv - average radiance per day per study area
 if all_results:
     master_df = pd.DataFrame(all_results)
     local_csv = "H:/CEE0189/daily_analysis_summary.csv"
