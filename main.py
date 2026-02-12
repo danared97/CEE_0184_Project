@@ -20,7 +20,7 @@ study_configs = [
 #set up blackmarble client - need to have an Earthdata access token that allows clearance to LAADS DAAC
 bm = BlackMarble(
     token="...",
-    output_directory="...", # Choose any local folder on your C: drive
+    output_directory="...", # Choose any local(!!!) folder
     output_skip_if_exists=True
 )
 
@@ -41,7 +41,7 @@ def download_and_process(config):
     daily_records = []
     bin_edges = np.linspace(0, 100, 11)
 
-    # --- METHOD 1: Attempt Whole Range (Fastest) ---
+    # Attempt full date range
     try:
         print(f"   Attempting bulk download for {len(dates)} days...")
         with bm.raster(gdf, product_id=Product.VNP46A2, date_range=dates) as ds:
@@ -53,7 +53,7 @@ def download_and_process(config):
             daily_slice = data_in_memory.isel(time=i)
             daily_records.append(process_daily_slice(config, daily_slice, date_str, bin_edges))
 
-    # --- METHOD 2: Fallback to Individual Days (Reliable) ---
+    # individual days (slow)
     except Exception as e:
         if "manifest" in str(e) or "required files could not found" in str(e):
             print(f"   Manifest error detected. Switching to individual day collection...")
@@ -70,7 +70,7 @@ def download_and_process(config):
 
     return daily_records
 
-# 3. EXECUTION LOOP
+# execute function
 all_results = []
 for config in study_configs:
     try:
@@ -80,7 +80,7 @@ for config in study_configs:
     except Exception as e:
         print(f"!!! Error on {config['name']}: {e}")
 
-# 4. EXPORT MASTER CSV (Will have one row per day per area)
+# 4. export csv (Will have one row per day per area, average radiance per day)
 if all_results:
     master_df = pd.DataFrame(all_results)
     local_csv = "..."
