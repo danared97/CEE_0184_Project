@@ -28,7 +28,7 @@ bm = BlackMarble(
 #Gemini was utilized for lines 63-90 in order to allow for manual image selection when dates were not available - the code
 #runs through the timeline provided, determines if imagery is available for all dates. If it is, then the manifest order
 #is sent to the DAAC. If not, orders are sent individually with missing dates skipped.
-# Use this name consistently
+
 # Ensure "out_dir" is a unique subfolder for each area inside your Box path
 base_box_path = "..."
 
