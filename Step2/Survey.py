@@ -7,7 +7,7 @@ client = OpenAI(
     api_key=""
 )
 
-interview_prompt = ("Ensure that the following interview questions regarding the impact of wildfires on infrastructure "
+survey_prompt = ("Ensure that the following mail-survey questions regarding the impact of wildfires on infrastructure "
                     "such as roads, power lines, railways, and building structures are open-ended and neutral. Suggest"
                     "additional questions that may be relevant. We also want to start the survey with a clear statement of"
                     "consent and understanding that the results will be used for a study on community infrastructure recovery"
@@ -31,6 +31,14 @@ interview_prompt = ("Ensure that the following interview questions regarding the
                     "If you lost power, how did it affect you? "
                     "Did the outage raise health-related issues for you or anyone in your household?"
                     "How long was the power outage? "
+                 
+                    "Infrastructure questions:"
+                    "Which infrastructure improvements would most support faster or more equitable recovery in your community?"
+                    "How were roads and transportation affected in your area before and after the event? "
+                    "Were there any changes in how you or others in your community accessed evacuation routes or emergency services? "
+                    "How were railway services affected by the wildfire? Were you affected by these changes?"
+                    "How were buildings and other structures in your area affected by wildfires? What was the timeline around repairing or rebuilding structures? "
+                    "Did this structural damage influence your daily living conditions?"
                     
                     "Wildfire questions: "
                     "Was there any issue related to the fire that affected you  more heavily than the power outage? "
@@ -39,7 +47,7 @@ interview_prompt = ("Ensure that the following interview questions regarding the
 
 response = client.responses.create(
     model="gpt-5-nano",
-    input=interview_prompt,
+    input=survey_prompt,
     store=True,
 )
 print(response.output_text)

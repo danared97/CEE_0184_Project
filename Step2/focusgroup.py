@@ -7,7 +7,7 @@ client = OpenAI(
   api_key=""
 )
 
-interview_prompt = ("Ensure that the following interview questions regarding the impact of wildfires on infrastructure "
+focusgroup_prompt = ("Ensure that the following focus group questions (5 people, 3 groups) regarding the impact of wildfires on infrastructure "
                     "such as roads, power lines, railways, and building structures are open-ended and neutral. Suggest"
                     "additional questions that may be relevant. We also want to start the survey with a clear statement of"
                     "consent and understanding that the results will be used for a study on community infrastructure recovery"
@@ -33,11 +33,18 @@ interview_prompt = ("Ensure that the following interview questions regarding the
                     "Are there any ways that this event still affects you? How?"
                     "What was the worst outcome from this event for you? "
                     "Was your job affected by this event?"
-                    "How do you get to work? Was your route to work affected by this event?")
+                    "How do you get to work? Was your route to work affected by this event?"
+
+                    "Infrastructure questions:"
+                    "Which infrastructure improvements would most support faster or more equitable recovery in your community?"
+                    "How were roads and transportation affected in your area before and after the event? "
+                    "Were there any changes in how you or others in your community accessed evacuation routes or emergency services? "
+                    "How were railway services affected by the wildfire? Were you affected by these changes?"
+                    "How were buildings and other structures in your area affected by wildfires? What was the timeline around repairing or rebuilding structures? ")
 
 response = client.responses.create(
   model="gpt-5-nano",
-  input=interview_prompt,
+  input=focusgroup_prompt,
   store=True,
 )
 print(response.output_text)
