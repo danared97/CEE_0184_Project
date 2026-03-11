@@ -3,18 +3,22 @@ from rasterio import features
 import geopandas as gpd
 import numpy as np
 import glob
+import sys
 import os
+sys.path = [p for p in sys.path if "ProgramData\\spyder-6" not in p]
+
+
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, classification_report
 
-# --- 1. CONFIGURATION & PATHS ---
-data_path = r"C:\Users\dredhu01\Box\CEE0189\test_output\boston_snowstorm\VNP46A1"
-shape_path = os.path.join(data_path, "outage_area.shp")  # Your Cape Cod shapefile
-all_tifs = sorted(glob.glob(os.path.join(data_path, "MA_*.tif")))
+# setting everything up
+data_path = r"C:\Users\dredhu01\Box\CEE0189\test_output\boston_snowstormtake2"
+shape_path = os.path.join(data_path, "C:/Users/dredhu01/Box/CEE0189/test_output/boston_snowstorm/knownoutage/knownoutage.shp")  # Your Cape Cod shapefile
+all_tifs = sorted(glob.glob(os.path.join(data_path, "Snowstorm_Feb_Mar_2026_*.tif")))
 
-# Timeline Definitions (11 Days)
+# determine
 pre_files = all_tifs[0:4]  # Days 1-4 (Baseline)
-post_files = all_tifs[5:11]  # Days 6-11 (Analysis Window)
+post_files = all_tifs[5:13]  # Days 6-11 (Analysis Window)
 day_6_file = all_tifs  # Focus day for Confusion Matrix
 
 
@@ -28,6 +32,9 @@ def load_and_correct(f_path):
         # MOONLIGHT POST-PROCESSING:
         # We find the 5th percentile (the darkest pixels, likely ocean/forest)
         # and subtract that 'floor' from the entire image to normalize for moonlight.
+        #this needs to be done because we're using VNP46A1 data, which is raw, so we can work with pixels that have cloud
+        #interference (all data from cloud-interfered pixels are removed from VNP46A2).
+        # This baseline processing removes any brightness that comes from the shifting lunar cycle
         moonlight_floor = np.nanpercentile(data, 5)
         corrected_data = data - moonlight_floor
         corrected_data[corrected_data < 0] = 0  # Radiance cannot be negative
@@ -98,8 +105,8 @@ ax1.scatter(x_pts[idx], y_pts[idx], alpha=0.2, s=2, color='gray', label='All Pix
 # Highlight Cape Cod pixels in red
 cape_mask = (ground_truth_mask == 1) & (pre_mean > 1.5)
 ax1.scatter(pre_mean[cape_mask], day_6_rad[cape_mask], color='red', s=5, alpha=0.5, label='Cape Cod (Outage Area)')
-ax1.plot(,, 'k--', label = '1:1 Normal Line')
-ax1.set_title('Radiance Comparison: Pre-Mean vs Day 6 (Moon-Corrected)')
+ax1.plot([0, 100], [0, 100],  label = '1:1 Normal Line')
+ax1.set_title('Radiance Comparison: Pre-Mean vs Day 6 (Lunar-reflectance-corrected)')
 ax1.set_xlabel('Pre-Disaster Radiance ($nW/cm^2/sr$)')
 ax1.set_ylabel('Day 6 Radiance ($nW/cm^2/sr$)')
 ax1.legend()
@@ -118,7 +125,7 @@ ax2.legend()
 plt.tight_layout()
 plt.show()
 
-# --- 7. EXPORT PERCENT NORMAL GEOTIFF ---
+# export percent normal geotiff
 meta.update(dtype='float32', count=1)
 with np.errstate(divide='ignore', invalid='ignore'):
     pn_map = 100 * (day_6_rad / pre_mean)
