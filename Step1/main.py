@@ -11,15 +11,22 @@ from blackmarble import BlackMarble, Product
 
 
 # define region of interest
+# define as three composites: pre-fire, during fire, and post-fire
 study_configs = [
-    {"name": "Cali", "path": "...", "out_dir": "...", "start": "2025-01-01", "end": "2025-02-11"},
-    {"name": "Argentina", "path": "...", "out_dir": "...", "start": "2025-01-01", "end": "2025-03-02"},
-    {"name": "SouthKorea", "path": "...", "out_dir": "...", "start": "2025-03-14", "end": "2025-04-03"},
+    {"name": "Cali_prefire", "path": "...", "out_dir": "...", "start": "2024-12-31", "end": "2025-01-06"},
+    {"name": "Cali_fire", "path": "...", "out_dir": "...", "start": "2025-01-07", "end": "2025-01-31"},
+    {"name": "Cali_postfire", "path": "...", "out_dir": "...", "start": "2025-02-01", "end": "2025-02-07"},
+    {"name": "argentina_prefire", "path": "...", "out_dir": "...", "start": "2025-01-08", "end": "2025-01-14"},
+    {"name": "argentina_fire", "path": "...", "out_dir": "...", "start": "2025-01-15", "end": "2025-02-23"},
+    {"name": "argentina_postfire", "path": "...", "out_dir": "...", "start": "2025-02-24", "end": "2025-03-03"},
+    {"name": "southkorea_prefire", "path": "...", "out_dir": "...", "start": "2025-03-14", "end": "2025-03-20"},
+    {"name": "southkorea_fire", "path": "...", "out_dir": "...", "start": "2025-03-21", "end": "2025-03-27"},
+    {"name": "southkorea_postfire", "path": "...", "out_dir": "...", "start": "2025-03-28", "end": "2025-04-06"},
 ]
 
 #set up blackmarble client - need to have an Earthdata access token that allows clearance to LAADS DAAC
 bm = BlackMarble(
-    token="...",
+    token="eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6ImRudmFuaHVpcyIsImV4cCI6MTc3NTkzMjA2MSwiaWF0IjoxNzcwNzQ4MDYxLCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.MlsRkLkAEiTovHkM8z2O01LGEnGJozR5cu644CSNh9xZ2o5kUPXNRrdD8-g-X2udn7A9NT48C2ZKc_QICrq0ESfmot7xUSbly-f0VdjBc1go-CNmQgdKOr0pAYvJdrh8FexaMdv2mG0GyBdfQNHIxH5DoHdbpwNjA13CRF0mu_WRlll9_QYLq9iHgRyrqtmX-AG9lwJIfloV7tU-WMf6T_oVGgQKlEwKnxiXoUAl2hEEu1jLrR0cY1OLEuO4M8w6aMdhXndPa4aoSPuSi_KUSc228Wfw8Sb3a75e4RcHpZzZIkL1LWFO0s3G_RDIlCPCNqdpLH7egATIF8pix4GKYA",
     output_directory="...", # Choose any local(!!!) folder
     output_skip_if_exists=True
 )
