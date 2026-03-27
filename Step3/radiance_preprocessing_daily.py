@@ -21,6 +21,8 @@ study_configs = [
     {"name": "southkorea_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/postfire"},
 ]
 
+
+
 # 2. BEAST pixel-level composite from existing rasters
 
 def beast_pixel_composite_from_rasters(config, n_jobs=None):
@@ -36,10 +38,21 @@ def beast_pixel_composite_from_rasters(config, n_jobs=None):
         return None
 
     print(f"   Found {len(tif_files)} daily rasters")
-    slices = [rioxarray.open_rasterio(f).squeeze() for f in tif_files]
 
-    # stack into 3D array: (time, x, y)
-    data_in_memory = xr.concat(slices, dim='time')
+    # load slices and align them
+    slices = []
+    for f in tif_files:
+        da = rioxarray.open_rasterio(f)
+        if "band" in da.dims:
+            da = da.isel(band=0)
+        da = da.squeeze()
+        slices.append(da)
+
+    # align all rasters to the same grid
+    data_in_memory, *_ = xr.align(*slices, join='outer')  # outer keeps all pixels, fills missing with NaN
+
+    # stack into 3D: (time, x, y)
+    data_in_memory = xr.concat(data_in_memory, dim='time')
     ntime, nx, ny = data_in_memory.shape
     composite_array = np.full((nx, ny), np.nan)
 
@@ -61,12 +74,14 @@ def beast_pixel_composite_from_rasters(config, n_jobs=None):
 
     print(f"   Running BEAST in parallel using {n_jobs} cores...")
     pixel_indices = [(i, j) for i in range(nx) for j in range(ny)]
-    from joblib import Parallel, delayed
     results = Parallel(n_jobs=n_jobs)(delayed(compute_pixel)(i, j) for i, j in pixel_indices)
 
-    # reshape to 2D: takes a collection of data, converts it to a numpy array, rearranges that data into a 2d structure with nx rows and ny
-    # columns, then copies that reshaped data into a 2d structure
-    composite_array[:, :] = np.array(results).reshape((nx, ny))
+    # reshape results safely
+    results_array = np.array(results)
+    if results_array.size != nx * ny:
+        raise ValueError(f"Unexpected number of pixels: got {results_array.size}, expected {nx * ny}")
+
+    composite_array = results_array.reshape((nx, ny))
 
     # save raster
     composite_da = data_in_memory.isel(time=0).copy()
@@ -86,6 +101,8 @@ def beast_pixel_composite_from_rasters(config, n_jobs=None):
 
     return df_pixels
 
+
+
 # 3. Run for all study areas
 
 all_pixel_dfs = []
@@ -99,7 +116,8 @@ if all_pixel_dfs:
     pixel_data = pd.concat(all_pixel_dfs, ignore_index=True)
     pixel_csv = "C:/Users/dredhu01/Box/CEE0189/output/Step3/pixel_composites_BEAST_from_local.csv"
     pixel_data.to_csv(pixel_csv, index=False)
-    print(f"\n Pixel-level data saved to {pixel_csv}")
+    print(f"\n✅ Pixel-level data saved to {pixel_csv}")
+
 
 # 4. Example scatter plot
 
