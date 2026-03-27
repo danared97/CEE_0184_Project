@@ -28,8 +28,8 @@ study_configs = [
 
 #set up blackmarble client - need to have an Earthdata access token that allows clearance to LAADS DAAC
 bm = BlackMarble(
-    token="eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6ImRudmFuaHVpcyIsImV4cCI6MTc3NTkzMjA2MSwiaWF0IjoxNzcwNzQ4MDYxLCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.MlsRkLkAEiTovHkM8z2O01LGEnGJozR5cu644CSNh9xZ2o5kUPXNRrdD8-g-X2udn7A9NT48C2ZKc_QICrq0ESfmot7xUSbly-f0VdjBc1go-CNmQgdKOr0pAYvJdrh8FexaMdv2mG0GyBdfQNHIxH5DoHdbpwNjA13CRF0mu_WRlll9_QYLq9iHgRyrqtmX-AG9lwJIfloV7tU-WMf6T_oVGgQKlEwKnxiXoUAl2hEEu1jLrR0cY1OLEuO4M8w6aMdhXndPa4aoSPuSi_KUSc228Wfw8Sb3a75e4RcHpZzZIkL1LWFO0s3G_RDIlCPCNqdpLH7egATIF8pix4GKYA",
-    output_directory="C:/Users/dredhu01/Box/CEE0189/output/step3_backup", # Choose any local(!!!) folder
+    token=""
+    output_directory="C:/Users/dredhu01/Box/CEE0189/output/step3_backup",
     output_skip_if_exists=True
 )
 
@@ -40,6 +40,21 @@ bm = BlackMarble(
 
 # Ensure "out_dir" is a unique subfolder for each area inside your Box path
 base_box_path = "C:/Users/dredhu01/Box/CEE0189/output/step3_backup"
+
+def process_daily_slice(config, raster, date_str, bin_edges):
+    values = raster.values.flatten()
+    values = values[~np.isnan(values)]
+
+    hist, _ = np.histogram(values, bins=bin_edges)
+
+    return {
+        "study_area": config["name"],
+        "date": date_str,
+        "mean_radiance": float(np.mean(values)),
+        "median_radiance": float(np.median(values)),
+        "histogram": hist.tolist()
+    }
+
 
 def download_and_process(config):
     print(f"\n>>> Processing: {config['name']}")
@@ -60,6 +75,11 @@ def download_and_process(config):
         for i, date_val in enumerate(data_in_memory.time.values):
             date_str = pd.to_datetime(date_val).strftime('%Y-%m-%d')
             daily_slice = data_in_memory.isel(time=i)
+
+            # optional: save raster
+            out_tif = os.path.join(config['out_dir'], f"{config['name']}_{date_str}.tif")
+            daily_slice.rio.to_raster(out_tif)
+
             daily_records.append(process_daily_slice(config, daily_slice, date_str, bin_edges))
 
     # individual days (slow)
@@ -70,20 +90,26 @@ def download_and_process(config):
                 try:
                     with bm.raster(gdf, product_id=Product.VNP46A2, date_range=date_str) as ds:
                         daily_slice = ds['DNB_BRDF-Corrected_NTL'].load().isel(time=0)
+
+                    # optional: save raster
+                    out_tif = os.path.join(config['out_dir'], f"{config['name']}_{date_str}.tif")
+                    daily_slice.rio.to_raster(out_tif)
+
                     daily_records.append(process_daily_slice(config, daily_slice, date_str, bin_edges))
                     print(f"   Successfully collected: {date_str}")
+
                 except Exception as day_error:
                     print(f"   SKIPPING {date_str}: Data truly missing ({day_error})")
         else:
-            raise e # Re-raise if it's a different error (like path or token issues)
+            raise e
 
     return daily_records
+
 
 # execute function
 all_results = []
 for config in study_configs:
     try:
-        # Extend the list with the multiple rows returned for each area
         daily_stats = download_and_process(config)
         all_results.extend(daily_stats)
     except Exception as e:
@@ -92,9 +118,9 @@ for config in study_configs:
 # 4. export csv (Will have one row per day per area, average radiance per day)
 if all_results:
     master_df = pd.DataFrame(all_results)
-    local_csv = "..."
+    local_csv = "C:/Users/dredhu01/Desktop/daily_viirs.csv"
     #was having issues saving to box, this just saves locally and then to box
-    final_box_csv = "..."
+    final_box_csv = "C:/Users/dredhu01/Box/CEE0189/output/daily_viirs.csv"
 
     master_df.to_csv(local_csv, index=False)
     shutil.copy2(local_csv, final_box_csv)
