@@ -78,13 +78,6 @@ def beast_pixel_composite_from_rasters(config, n_jobs=None):
 
     print(f"   Estimated file size: {est_size_gb:.4f} GB")
 
-    # If the file is huge, suggest compression
-    if est_size_gb > 3.0:
-        print("Large file detected! Applying LZW compression to save space.")
-        composite_da.rio.to_raster(out_tif, compress='lzw')
-    else:
-        composite_da.rio.to_raster(out_tif)
-
     composite_da.rio.to_raster(out_tif)
     print(f"   Saved raster: {out_tif}")
 
