@@ -8,7 +8,6 @@ from joblib import Parallel, delayed
 import multiprocessing
 import time
 
-
 study_configs = [
     {"name": "Cali_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/prefire"},
     {"name": "Cali_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/fire"},
@@ -23,30 +22,39 @@ study_configs = [
 
 
 def beast_pixel_composite_from_rasters(config, n_jobs=None):
-    print(f"\n>>> Processing: {config['name']}")
+    start_total = time.time()
+    print(f"\n>>> Starting: {config['name']}")
 
+    # 1. FIND FILES
     tif_files = sorted([os.path.join(config['out_dir'], f)
                         for f in os.listdir(config['out_dir'])
                         if f.lower().endswith(".tif")])
 
     if not tif_files:
-        print("   No rasters found in folder!")
+        print("   [!] No rasters found!")
         return None
 
-    # Load and clean slices
+    # 2. LOAD & ALIGN
+    start_load = time.time()
     slices = []
     for f in tif_files:
+        # Open and ensure we keep the spatial coords
         da = rioxarray.open_rasterio(f).isel(band=0).squeeze()
         slices.append(da)
 
-    # Robust Alignment & Stacking
+    # Aligning ensures all rasters share the exact same grid
     aligned_list = xr.align(*slices, join='outer')
-    data_in_memory = xr.concat(aligned_list, dim='time')
-    ntime, nx, ny = data_in_memory.shape
+    data_stack = xr.concat(aligned_list, dim='time')
 
-    # Inner function for parallel compute
-    def compute_pixel(i, j):
-        ts = data_in_memory[:, i, j].values
+    # Identify dimensions clearly: rioxarray usually provides (time, y, x)
+    # y = Rows (Lat), x = Cols (Lon)
+    ntime, ny, nx = data_stack.shape
+    print(f"   [Data Loaded] Shape: {ntime} times, {ny} rows, {nx} cols")
+    print(f"   [Time] Loading/Aligning took: {time.time() - start_load:.2f}s")
+
+    # 3. COMPUTE PIXELS
+    def compute_pixel(y_idx, x_idx):
+        ts = data_stack[:, y_idx, x_idx].values
         ts = ts[~np.isnan(ts)]
         if len(ts) < 3:
             return np.nan
@@ -56,39 +64,43 @@ def beast_pixel_composite_from_rasters(config, n_jobs=None):
         except:
             return np.nan
 
-    # Parallel Execution
     n_jobs = n_jobs or 4
-    print(f"   Running BEAST on {n_jobs} cores...")
-    pixel_indices = [(i, j) for i in range(nx) for j in range(ny)]
-    results = Parallel(n_jobs=n_jobs)(delayed(compute_pixel)(i, j) for i, j in pixel_indices)
+    print(f"   [Processing] Running BEAST on {n_jobs} cores...")
+    start_proc = time.time()
 
-    # Reshape results directly into the grid
-    composite_array = np.array(results).reshape((nx, ny))
+    # Create coordinate pairs (y, x) to match array indexing
+    pixel_indices = [(y, x) for y in range(ny) for x in range(nx)]
+    results = Parallel(n_jobs=n_jobs)(delayed(compute_pixel)(y, x) for y, x in pixel_indices)
 
-    # Save the resulting Raster
-    composite_da = data_in_memory.isel(time=0).copy()
+    proc_duration = time.time() - start_proc
+    print(f"   [Time] BEAST processing took: {proc_duration:.2f}s ({(proc_duration / 60):.2f} mins)")
+
+    # 4. RECONSTRUCT RASTER
+    # Map results back to 2D grid
+    composite_array = np.array(results).reshape((ny, nx))
+
+    # Copy the metadata from the first slice of the stack
+    composite_da = data_stack.isel(time=0).copy(deep=True)
     composite_da.values = composite_array
+
+    # Ensure spatial metadata is preserved
+    if hasattr(data_stack, 'rio'):
+        composite_da.rio.write_crs(data_stack.rio.crs, inplace=True)
+        composite_da.rio.write_transform(data_stack.rio.transform(), inplace=True)
+
+    # 5. SAVE
+    start_save = time.time()
     out_tif = os.path.join(config['out_dir'], f"{config['name']}_composite_BEAST.tif")
-
-    total_pixels = nx * ny
-    bytes_per_pixel = 8  # Standard for float64 decimal data
-
-    # Calculate in GB
-    est_size_gb = (total_pixels * bytes_per_pixel) / (1024 ** 3)
-
-    print(f"   Estimated file size: {est_size_gb:.4f} GB")
-
     composite_da.rio.to_raster(out_tif)
-    print(f"   Saved raster: {out_tif}")
 
-    # Create data for the CSV
+    print(f"   [Saved] Raster: {out_tif}")
+    print(f"   [Time] Saving took: {time.time() - start_save:.2f}s")
+    print(f"   >>> Finished {config['name']} in {time.time() - start_total:.2f}s")
+
+    # Return CSV data
     pixels = composite_array.flatten()
     pixels = pixels[~np.isnan(pixels)]
-    return pd.DataFrame({
-        "study_area": config["name"],
-        "radiance": pixels
-    })
-
+    return pd.DataFrame({"study_area": config["name"], "radiance": pixels})
 
 if __name__ == "__main__":
     all_pixel_dfs = []
