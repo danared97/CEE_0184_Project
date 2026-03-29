@@ -1,14 +1,14 @@
+import Rbeast as rb
 import os
 import numpy as np
 import pandas as pd
 import xarray as xr
 import rioxarray
-import Rbeast as rb
 from joblib import Parallel, delayed
 import multiprocessing
-import matplotlib.pyplot as plt
+import time
 
-# 1. Study areas & folders
+
 study_configs = [
     {"name": "Cali_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/prefire"},
     {"name": "Cali_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/fire"},
@@ -22,41 +22,29 @@ study_configs = [
 ]
 
 
-
-# 2. BEAST pixel-level composite from existing rasters
-
 def beast_pixel_composite_from_rasters(config, n_jobs=None):
     print(f"\n>>> Processing: {config['name']}")
 
-    # list all TIFs in out_dir
     tif_files = sorted([os.path.join(config['out_dir'], f)
                         for f in os.listdir(config['out_dir'])
                         if f.lower().endswith(".tif")])
 
-    if len(tif_files) == 0:
+    if not tif_files:
         print("   No rasters found in folder!")
         return None
 
-    print(f"   Found {len(tif_files)} daily rasters")
-
-    # load slices and align them
+    # Load and clean slices
     slices = []
     for f in tif_files:
-        da = rioxarray.open_rasterio(f)
-        if "band" in da.dims:
-            da = da.isel(band=0)
-        da = da.squeeze()
+        da = rioxarray.open_rasterio(f).isel(band=0).squeeze()
         slices.append(da)
 
-    # align all rasters to the same grid
-    data_in_memory, *_ = xr.align(*slices, join='outer')  # outer keeps all pixels, fills missing with NaN
-
-    # stack into 3D: (time, x, y)
-    data_in_memory = xr.concat(data_in_memory, dim='time')
+    # Robust Alignment & Stacking
+    aligned_list = xr.align(*slices, join='outer')
+    data_in_memory = xr.concat(aligned_list, dim='time')
     ntime, nx, ny = data_in_memory.shape
-    composite_array = np.full((nx, ny), np.nan)
 
-    # function to compute BEAST for a single pixel
+    # Inner function for parallel compute
     def compute_pixel(i, j):
         ts = data_in_memory[:, i, j].values
         ts = ts[~np.isnan(ts)]
@@ -68,68 +56,61 @@ def beast_pixel_composite_from_rasters(config, n_jobs=None):
         except:
             return np.nan
 
-    # number of cores
-    if n_jobs is None:
-        n_jobs = max(1, multiprocessing.cpu_count() - 1)
-
-    print(f"   Running BEAST in parallel using {n_jobs} cores...")
+    # Parallel Execution
+    n_jobs = n_jobs or 4
+    print(f"   Running BEAST on {n_jobs} cores...")
     pixel_indices = [(i, j) for i in range(nx) for j in range(ny)]
     results = Parallel(n_jobs=n_jobs)(delayed(compute_pixel)(i, j) for i, j in pixel_indices)
 
-    # reshape results safely
-    results_array = np.array(results)
-    if results_array.size != nx * ny:
-        raise ValueError(f"Unexpected number of pixels: got {results_array.size}, expected {nx * ny}")
+    # Reshape results directly into the grid
+    composite_array = np.array(results).reshape((nx, ny))
 
-    composite_array = results_array.reshape((nx, ny))
-
-    # save raster
+    # Save the resulting Raster
     composite_da = data_in_memory.isel(time=0).copy()
     composite_da.values = composite_array
     out_tif = os.path.join(config['out_dir'], f"{config['name']}_composite_BEAST.tif")
-    composite_da.rio.to_raster(out_tif)
-    print(f"   Saved BEAST-based composite to {out_tif}")
 
-    # create pixel-level dataframe
+    total_pixels = nx * ny
+    bytes_per_pixel = 8  # Standard for float64 decimal data
+
+    # Calculate in GB
+    est_size_gb = (total_pixels * bytes_per_pixel) / (1024 ** 3)
+
+    print(f"   Estimated file size: {est_size_gb:.4f} GB")
+
+    # If the file is huge, suggest compression
+    if est_size_gb > 3.0:
+        print("Large file detected! Applying LZW compression to save space.")
+        composite_da.rio.to_raster(out_tif, compress='lzw')
+    else:
+        composite_da.rio.to_raster(out_tif)
+
+    composite_da.rio.to_raster(out_tif)
+    print(f"   Saved raster: {out_tif}")
+
+    # Create data for the CSV
     pixels = composite_array.flatten()
     pixels = pixels[~np.isnan(pixels)]
-    df_pixels = pd.DataFrame({
+    return pd.DataFrame({
         "study_area": config["name"],
-        "period": config["name"].split("_")[-1],  # prefire/fire/postfire
         "radiance": pixels
     })
 
-    return df_pixels
 
+if __name__ == "__main__":
+    all_pixel_dfs = []
 
+    for config in study_configs:
+        df_pixels = beast_pixel_composite_from_rasters(config, n_jobs=4)
+        if df_pixels is not None:
+            all_pixel_dfs.append(df_pixels)
 
-# 3. Run for all study areas
+        # Pause to let Box Drive sync without crashing
+        print("   Pausing 2 seconds for Box sync...")
+        time.sleep(2)
 
-all_pixel_dfs = []
-for config in study_configs:
-    df_pixels = beast_pixel_composite_from_rasters(config, n_jobs=8)
-    if df_pixels is not None:
-        all_pixel_dfs.append(df_pixels)
-
-# combine all pixel-level data
-if all_pixel_dfs:
-    pixel_data = pd.concat(all_pixel_dfs, ignore_index=True)
-    pixel_csv = "C:/Users/dredhu01/Box/CEE0189/output/Step3/pixel_composites_BEAST_from_local.csv"
-    pixel_data.to_csv(pixel_csv, index=False)
-    print(f"\n✅ Pixel-level data saved to {pixel_csv}")
-
-
-# 4. Example scatter plot
-
-area = "Cali"
-pre_pixels = pixel_data[pixel_data.study_area == f"{area}_prefire"]["radiance"].values
-post_pixels = pixel_data[pixel_data.study_area == f"{area}_postfire"]["radiance"].values
-
-plt.figure(figsize=(6, 6))
-plt.scatter(pre_pixels, post_pixels, alpha=0.3)
-plt.xlabel("Pre-fire radiance")
-plt.ylabel("Post-fire radiance")
-plt.title(f"Pixel-level VIIRS NTL recovery: {area}")
-plt.plot([0, max(pre_pixels.max(), post_pixels.max())],
-         [0, max(pre_pixels.max(), post_pixels.max())], 'r--')
-plt.show()
+    if all_pixel_dfs:
+        final_df = pd.concat(all_pixel_dfs, ignore_index=True)
+        csv_path = "C:/Users/dredhu01/Box/CEE0189/output/Step3/pixel_composites_BEAST_from_local.csv"
+        final_df.to_csv(csv_path, index=False)
+        print(f"\n SUCCESS: All data saved to {csv_path}")
