@@ -9,15 +9,15 @@ import multiprocessing
 import time
 
 study_configs = [
-    {"name": "Cali_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/prefire"},
-    {"name": "Cali_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/fire"},
-    {"name": "Cali_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/postfire"},
-    {"name": "argentina_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/prefire"},
-    {"name": "argentina_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/fire"},
-    {"name": "argentina_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/postfire"},
-    {"name": "southkorea_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/prefire"},
-    {"name": "southkorea_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/fire"},
-    {"name": "southkorea_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/postfire"},
+    {"name": "Cali_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/California/prefire"},
+    {"name": "Cali_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/California/fire"},
+    {"name": "Cali_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/California/postfire"},
+    {"name": "argentina_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/Argentina/prefire"},
+    {"name": "argentina_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/Argentina/fire"},
+    {"name": "argentina_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/Argentina/postfire"},
+    {"name": "southkorea_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/SouthKorea/prefire"},
+    {"name": "southkorea_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/SouthKorea/fire"},
+    {"name": "southkorea_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly/SouthKorea/postfire"},
 ]
 
 
@@ -55,7 +55,7 @@ def beast_pixel_composite_from_rasters(config, n_jobs=None):
         if len(ts) < 3:
             return np.nan
         try:
-            o = rb.beast(ts, season='none', trend='piecewise', quiet=True)
+            o = rb.beast(ts, season='harmonic', period=12, deltat=1/12, quiet=True)
             return np.median(o.trend.Y)
         except:
             return np.nan
