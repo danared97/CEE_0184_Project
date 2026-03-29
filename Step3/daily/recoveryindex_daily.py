@@ -5,7 +5,7 @@ import rasterio
 
 # Mapping your directory names to the formula terms
 regions = ["California", "Argentina", "SouthKorea"]
-base_path = "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily"
+base_path = "C:/Users/dredhu01/Box/CEE0189/output/Step3/monthly"
 
 for reg in regions:
     print(f"\n--- Calculating Recovery Index for: {reg} ---")
