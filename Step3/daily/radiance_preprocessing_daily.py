@@ -6,31 +6,33 @@ import xarray as xr
 import rioxarray
 from joblib import Parallel, delayed
 import time
+from tqdm import tqdm
+
 '''
     {"name": "Cali_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/prefire"},
     {"name": "Cali_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/fire"},
     {"name": "Cali_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/postfire"},
 '''
+
 study_configs = [
-    {"name": "argentina_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/prefire"},
-    {"name": "argentina_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/fire"},
-    {"name": "argentina_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/postfire"},
-    {"name": "southkorea_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/prefire"},
-    {"name": "southkorea_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/fire"},
-    {"name": "southkorea_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/postfire"},
+    {"name": "argentina_prefire", "out_dir": "H:/backup_step3/daily/Argentina/prefire"},
+    {"name": "argentina_fire", "out_dir": "H:/backup_step3/daily/Argentina/fire"},
+    {"name": "argentina_postfire", "out_dir": "H:/backup_step3/daily/daily/Argentina/postfire"},
+    {"name": "southkorea_prefire", "out_dir": "H:/backup_step3/daily/SouthKorea/prefire"},
+    {"name": "southkorea_fire", "out_dir": "H:/backup_step3/daily/SouthKorea/fire"},
+    {"name": "southkorea_postfire", "out_dir": "H:/backup_step3/daily/SouthKorea/postfire"},
 ]
 
-
 def process_chunk(chunk):
-    """Processes a block of pixels at once to reduce overhead."""
+    """Processes a batch of pixels. Threading makes this much more stable on Windows."""
     chunk_results = []
     for ts in chunk:
         ts_clean = ts[~np.isnan(ts)]
-        if len(ts_clean) < 3:
+        # Skip if not enough data or if the data is a flat line (zero variance)
+        if len(ts_clean) < 3 or np.std(ts_clean) == 0:
             chunk_results.append(np.nan)
             continue
         try:
-            # piecewise trend decomposition
             o = rb.beast(ts_clean, season='none', trend='piecewise', quiet=True)
             chunk_results.append(np.median(o.trend.Y))
         except:
@@ -49,44 +51,47 @@ def beast_pixel_composite_from_rasters(config, n_jobs=4):
         print(f"   [!] No rasters found in: {config['out_dir']}")
         return None
 
-    # 1. LOAD & ALIGN
+    # LOAD & ALIGN
     slices = [rioxarray.open_rasterio(f).isel(band=0).squeeze() for f in tif_files]
     aligned_list = xr.align(*slices, join='outer')
     data_stack = xr.concat(aligned_list, dim='time')
 
     ntime, nx, ny = data_stack.shape
-    # Flatten to (Pixels, Time) for vectorized access
+    # Flatten to (Time, Pixels) -> Transpose to (Pixels, Time)
     flat_data = data_stack.values.reshape(ntime, -1).T
 
-    # 2. FILTER VALID PIXELS (Massive speed gain)
-    # Skip pixels that are all NaN or have fewer than 3 data points
+    # FILTER VALID PIXELS (Significant speedup)
     valid_mask = np.count_nonzero(~np.isnan(flat_data), axis=1) >= 3
-    valid_indices = np.where(valid_mask)[0]
     data_to_process = flat_data[valid_mask]
 
     print(f"   Stack: ({ntime}x{nx}x{ny}) | Valid Pixels: {len(data_to_process)} / {nx * ny}")
 
-    # 3. CHUNK & PARALLEL PROCESS
-    # Break into batches of 1000 to minimize Joblib overhead
+    # CHUNK WORKLOAD
     chunk_size = 1000
     num_chunks = max(1, len(data_to_process) // chunk_size)
     pixel_chunks = np.array_split(data_to_process, num_chunks)
 
-    print(f"   Processing {len(pixel_chunks)} batches on {n_jobs} cores...")
-    calc_start = time.time()
-    nested_results = Parallel(n_jobs=n_jobs, verbose=1)(
+    # PARALLEL WITH PROGRESS BAR
+    # Use backend='threading' for stability and return_as='generator' for tqdm
+    print(f"   Launching Parallel BEAST (Threading) on {n_jobs} cores...")
+
+    generator = Parallel(n_jobs=n_jobs, backend="threading", return_as="generator")(
         delayed(process_chunk)(c) for c in pixel_chunks
     )
 
-    # Flatten the results back into a single list
+    # tqdm wraps the generator to track progress by batch
+    nested_results = []
+    for res in tqdm(generator, total=len(pixel_chunks), desc=f"   {config['name'][:15]}"):
+        nested_results.append(res)
+
     processed_values = [item for sublist in nested_results for item in sublist]
 
-    # 4. RECONSTRUCT GRID
+    # RECONSTRUCT GRID
     composite_flat = np.full(nx * ny, np.nan)
     composite_flat[valid_mask] = processed_values
     composite_array = composite_flat.reshape((nx, ny))
 
-    # 5. SAVE & FORMAT
+    # SAVE & FORMAT
     composite_da = aligned_list[0].copy(data=composite_array)
     out_tif = os.path.join(config['out_dir'], f"{config['name']}_composite_BEAST.tif")
     composite_da.rio.to_raster(out_tif)
@@ -107,7 +112,8 @@ if __name__ == "__main__":
 
     for idx, config in enumerate(study_configs):
         print(f"\nProcessing Study Area {idx + 1}/{len(study_configs)}")
-        df_pixels = beast_pixel_composite_from_rasters(config, n_jobs=4)  # Adjust n_jobs to your CPU count
+        # Adjust n_jobs to your CPU count (4 is safe; try 6-8 if you have 16GB+ RAM)
+        df_pixels = beast_pixel_composite_from_rasters(config, n_jobs=4)
 
         if df_pixels is not None:
             all_pixel_dfs.append(df_pixels)
@@ -115,7 +121,7 @@ if __name__ == "__main__":
 
     if all_pixel_dfs:
         final_df = pd.concat(all_pixel_dfs, ignore_index=True)
-        csv_path = "C:/Users/dredhu01/Box/CEE0189/output/Step3/pixel_composites_BEAST_from_local.csv"
+        csv_path = "H:/backup_step3/daily/pixel_composites_BEAST.csv"
         final_df.to_csv(csv_path, index=False)
         print(f"\nSUCCESS: CSV saved to {csv_path}")
         print(f"Total Runtime: {(time.time() - script_start) / 60:.2f} minutes")
