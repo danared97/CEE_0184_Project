@@ -5,13 +5,13 @@ import pandas as pd
 import xarray as xr
 import rioxarray
 from joblib import Parallel, delayed
-import multiprocessing
 import time
-
-study_configs = [
+'''
     {"name": "Cali_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/prefire"},
     {"name": "Cali_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/fire"},
     {"name": "Cali_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/postfire"},
+'''
+study_configs = [
     {"name": "argentina_prefire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/prefire"},
     {"name": "argentina_fire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/fire"},
     {"name": "argentina_postfire", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/postfire"},
@@ -21,78 +21,83 @@ study_configs = [
 ]
 
 
-def beast_pixel_composite_from_rasters(config, n_jobs=None):
+def process_chunk(chunk):
+    """Processes a block of pixels at once to reduce overhead."""
+    chunk_results = []
+    for ts in chunk:
+        ts_clean = ts[~np.isnan(ts)]
+        if len(ts_clean) < 3:
+            chunk_results.append(np.nan)
+            continue
+        try:
+            # piecewise trend decomposition
+            o = rb.beast(ts_clean, season='none', trend='piecewise', quiet=True)
+            chunk_results.append(np.median(o.trend.Y))
+        except:
+            chunk_results.append(np.nan)
+    return chunk_results
+
+
+def beast_pixel_composite_from_rasters(config, n_jobs=4):
     start_time = time.time()
-    print(f"\n{'=' * 60}")
-    print(f">>> STARTING: {config['name']}")
-    print(f"{'=' * 60}")
+    print(f"\n{'=' * 60}\n>>> STARTING: {config['name']}\n{'=' * 60}")
 
     tif_files = sorted([os.path.join(config['out_dir'], f)
                         for f in os.listdir(config['out_dir'])
                         if f.lower().endswith(".tif")])
-
     if not tif_files:
         print(f"   [!] No rasters found in: {config['out_dir']}")
         return None
 
-    print(f"   Found {len(tif_files)} .tif files. Loading into memory...")
-
-    slices = []
-    for f in tif_files:
-        da = rioxarray.open_rasterio(f).isel(band=0).squeeze()
-        slices.append(da)
-
-    print("   Aligning and stacking rasters...")
+    # 1. LOAD & ALIGN
+    slices = [rioxarray.open_rasterio(f).isel(band=0).squeeze() for f in tif_files]
     aligned_list = xr.align(*slices, join='outer')
-    data_in_memory = xr.concat(aligned_list, dim='time')
-    ntime, nx, ny = data_in_memory.shape
-    print(f"   Stack Shape: (Time: {ntime}, Width: {nx}, Height: {ny})")
-    print(f"   Total Pixels to process: {nx * ny}")
+    data_stack = xr.concat(aligned_list, dim='time')
 
-    def compute_pixel(i, j):
-        ts = data_in_memory[:, i, j].values
-        ts = ts[~np.isnan(ts)]
-        if len(ts) < 3:
-            return np.nan
-        try:
-            o = rb.beast(ts, season='none', trend='piecewise', quiet=True)
-            return np.median(o.trend.Y)
-        except:
-            return np.nan
+    ntime, nx, ny = data_stack.shape
+    # Flatten to (Pixels, Time) for vectorized access
+    flat_data = data_stack.values.reshape(ntime, -1).T
 
-    n_jobs = n_jobs or 4
-    print(f"   Launching Parallel BEAST on {n_jobs} cores...")
-    pixel_indices = [(i, j) for i in range(nx) for j in range(ny)]
+    # 2. FILTER VALID PIXELS (Massive speed gain)
+    # Skip pixels that are all NaN or have fewer than 3 data points
+    valid_mask = np.count_nonzero(~np.isnan(flat_data), axis=1) >= 3
+    valid_indices = np.where(valid_mask)[0]
+    data_to_process = flat_data[valid_mask]
 
+    print(f"   Stack: ({ntime}x{nx}x{ny}) | Valid Pixels: {len(data_to_process)} / {nx * ny}")
+
+    # 3. CHUNK & PARALLEL PROCESS
+    # Break into batches of 1000 to minimize Joblib overhead
+    chunk_size = 1000
+    num_chunks = max(1, len(data_to_process) // chunk_size)
+    pixel_chunks = np.array_split(data_to_process, num_chunks)
+
+    print(f"   Processing {len(pixel_chunks)} batches on {n_jobs} cores...")
     calc_start = time.time()
-    results = Parallel(n_jobs=n_jobs, verbose=5)(delayed(compute_pixel)(i, j) for i, j in pixel_indices)
-    calc_end = time.time()
+    nested_results = Parallel(n_jobs=n_jobs, verbose=1)(
+        delayed(process_chunk)(c) for c in pixel_chunks
+    )
 
-    print(f"   Calculation complete. Time taken for pixels: {calc_end - calc_start:.2f}s")
+    # Flatten the results back into a single list
+    processed_values = [item for sublist in nested_results for item in sublist]
 
-    composite_array = np.array(results).reshape((nx, ny))
+    # 4. RECONSTRUCT GRID
+    composite_flat = np.full(nx * ny, np.nan)
+    composite_flat[valid_mask] = processed_values
+    composite_array = composite_flat.reshape((nx, ny))
 
-    print("   Formatting output raster...")
-    composite_da = data_in_memory.isel(time=0).copy()
-    composite_da.values = composite_array
+    # 5. SAVE & FORMAT
+    composite_da = aligned_list[0].copy(data=composite_array)
     out_tif = os.path.join(config['out_dir'], f"{config['name']}_composite_BEAST.tif")
-
-    est_size_gb = (nx * ny * 8) / (1024 ** 3)
-    print(f"   Estimated file size: {est_size_gb:.4f} GB")
-
     composite_da.rio.to_raster(out_tif)
-    print(f"   [SAVED] Raster: {out_tif}")
 
-    pixels = composite_array.flatten()
-    valid_pixels = pixels[~np.isnan(pixels)]
-    print(f"   Valid non-NaN pixels extracted: {len(valid_pixels)}")
-
-    total_time = time.time() - start_time
-    print(f">>> FINISHED {config['name']} in {total_time:.2f}s\n")
+    valid_pixels_only = composite_flat[~np.isnan(composite_flat)]
+    print(f"   [SAVED] {out_tif}")
+    print(f">>> FINISHED {config['name']} in {time.time() - start_time:.2f}s")
 
     return pd.DataFrame({
         "study_area": config["name"],
-        "radiance": valid_pixels
+        "radiance": valid_pixels_only
     })
 
 
@@ -102,20 +107,15 @@ if __name__ == "__main__":
 
     for idx, config in enumerate(study_configs):
         print(f"\nProcessing Study Area {idx + 1}/{len(study_configs)}")
-        df_pixels = beast_pixel_composite_from_rasters(config, n_jobs=4)
+        df_pixels = beast_pixel_composite_from_rasters(config, n_jobs=4)  # Adjust n_jobs to your CPU count
 
         if df_pixels is not None:
             all_pixel_dfs.append(df_pixels)
-
-        print("   Pausing 2 seconds for Box Drive sync...")
-        time.sleep(2)
+        time.sleep(1)
 
     if all_pixel_dfs:
-        print("\nMerging all results into final DataFrame...")
         final_df = pd.concat(all_pixel_dfs, ignore_index=True)
         csv_path = "C:/Users/dredhu01/Box/CEE0189/output/Step3/pixel_composites_BEAST_from_local.csv"
         final_df.to_csv(csv_path, index=False)
-        print(f"\n{'*' * 40}")
-        print(f" SUCCESS: Final CSV saved to {csv_path}")
-        print(f" Total Script Runtime: {(time.time() - script_start) / 60:.2f} minutes")
-        print(f"{'*' * 40}")
+        print(f"\nSUCCESS: CSV saved to {csv_path}")
+        print(f"Total Runtime: {(time.time() - script_start) / 60:.2f} minutes")

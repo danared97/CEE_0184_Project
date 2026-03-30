@@ -5,6 +5,7 @@ import pandas as pd
 import geopandas as gpd
 import rioxarray
 from blackmarble import BlackMarble, Product
+from concurrent.futures import ProcessPoolExecutor
 
 study_configs = [
     {"name": "California", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/cali_2.shp",
@@ -97,8 +98,28 @@ for config in study_configs:
     except Exception as e:
         print(f"!!! Error on {config['name']}: {e}")
 
-if all_results:
-    master_df = pd.DataFrame(all_results)
-    final_box_csv = "C:/Users/dredhu01/Box/CEE0189/output/monthly_viirs.csv"
-    master_df.to_csv(final_box_csv, index=False)
-    print(f"\nSUCCESS: CSV saved to {final_box_csv}")
+if __name__ == "__main__":
+    # 1. Initialize BlackMarble outside the loop if possible
+    # 2. Use a ProcessPoolExecutor to run study areas in parallel
+    all_results = []
+
+    # max_workers should ideally be the number of study areas or CPU cores (whichever is lower)
+    with ProcessPoolExecutor(max_workers=len(study_configs)) as executor:
+        # Submit all tasks
+        future_to_config = {executor.submit(download_and_process, config): config for config in study_configs}
+
+        for future in future_to_config:
+            config = future_to_config[future]
+            try:
+                monthly_stats = future.result()
+                all_results.extend(monthly_stats)
+                print(f"--- Completed: {config['name']} ---")
+            except Exception as e:
+                print(f"!!! Parallel Error on {config['name']}: {e}")
+
+    # Save results
+    if all_results:
+        master_df = pd.DataFrame(all_results)
+        final_box_csv = r"C:\Users\dredhu01\Box\CEE0189\output\monthly_viirs.csv"
+        master_df.to_csv(final_box_csv, index=False)
+        print(f"\nSUCCESS: CSV saved to {final_box_csv}")
