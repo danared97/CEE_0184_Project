@@ -6,46 +6,35 @@ import shutil
 import pandas as pd
 import geopandas as gpd
 import rioxarray
+from shapely.geometry import mapping
 
 from blackmarble import BlackMarble, Product
 
 
 # define region of interest
-# define as three composites: pre-fire, during fire, and post-fire
-# daily composites
+# define as three date ranges: pre-fire, during fire, and post-fire
+# goal is to download daily composite data of each study area from Earthdata through an API token
 study_configs = [
-    {"name": "Cali_prefire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/cali_2.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/prefire", "start": "2024-12-31", "end": "2025-01-06"},
-    {"name": "Cali_fire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/cali_2.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/fire", "start": "2025-01-07", "end": "2025-01-31"},
-    {"name": "Cali_postfire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/cali_2.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/California/postfire", "start": "2025-02-01", "end": "2025-02-07"},
-    {"name": "argentina_prefire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/argentina_3.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/prefire", "start": "2025-01-08", "end": "2025-01-14"},
-    {"name": "argentina_fire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/argentina_3.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/fire", "start": "2025-01-15", "end": "2025-02-23"},
-    {"name": "argentina_postfire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/argentina_3.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/Argentina/postfire", "start": "2025-02-24", "end": "2025-03-03"},
-    {"name": "southkorea_prefire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/southkorea.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/prefire", "start": "2025-03-14", "end": "2025-03-20"},
-    {"name": "southkorea_fire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/southkorea.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/fire", "start": "2025-03-21", "end": "2025-03-27"},
-    {"name": "southkorea_postfire", "path": "C:/Users/dredhu01/Box/CEE0189/studyareas/southkorea.shp", "out_dir": "C:/Users/dredhu01/Box/CEE0189/output/Step3/daily/SouthKorea/postfire", "start": "2025-03-28", "end": "2025-04-06"},
+    {"name": "argentina_prefire", "path": "H:/argentina_take2/argentinastudyarea/argentina/argentina_studyarea.shp", "out_dir": "H:/argentina_take2/argentinastudyarea/argentina/daily/prefire", "start": "2025-01-08", "end": "2025-01-14"},
+    {"name": "argentina_fire", "path": "H:/argentina_take2/argentinastudyarea/argentina/argentina_studyarea.shp", "out_dir": "H:/argentina_take2/argentinastudyarea/argentina/daily/fire", "start": "2025-01-15", "end": "2025-02-23"},
+    {"name": "argentina_postfire", "path": "H:/argentina_take2/argentinastudyarea/argentina/argentina_studyarea.shp", "out_dir": "H:/argentina_take2/argentinastudyarea/argentina/daily/postfire", "start": "2025-02-24", "end": "2025-03-03"},
 ]
 
 #set up blackmarble client - need to have an Earthdata access token that allows clearance to LAADS DAAC
 bm = BlackMarble(
     token="eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6ImRudmFuaHVpcyIsImV4cCI6MTc3NTkzMjA2MSwiaWF0IjoxNzcwNzQ4MDYxLCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.MlsRkLkAEiTovHkM8z2O01LGEnGJozR5cu644CSNh9xZ2o5kUPXNRrdD8-g-X2udn7A9NT48C2ZKc_QICrq0ESfmot7xUSbly-f0VdjBc1go-CNmQgdKOr0pAYvJdrh8FexaMdv2mG0GyBdfQNHIxH5DoHdbpwNjA13CRF0mu_WRlll9_QYLq9iHgRyrqtmX-AG9lwJIfloV7tU-WMf6T_oVGgQKlEwKnxiXoUAl2hEEu1jLrR0cY1OLEuO4M8w6aMdhXndPa4aoSPuSi_KUSc228Wfw8Sb3a75e4RcHpZzZIkL1LWFO0s3G_RDIlCPCNqdpLH7egATIF8pix4GKYA",
-    output_directory="C:/Users/dredhu01/Box/CEE0189/output/step3_backup",
+    output_directory="C:/Users/dredhu01/Box/CEE0189/output/step3_backup/daily",
     output_skip_if_exists=True
 )
-
-# Function: runs through each study area and returns a daily mosaicked TIF output for full area
-#Gemini was utilized for lines 63-90 in order to allow for manual image selection when dates were not available - the code
-#runs through the timeline provided, determines if imagery is available for all dates. If it is, then the manifest order
-#is sent to the DAAC. If not, orders are sent individually with missing dates skipped.
-
-# Ensure "out_dir" is a unique subfolder for each area inside your Box path
-base_box_path = "C:/Users/dredhu01/Box/CEE0189/output/step3_backup"
 
 def process_daily_slice(config, raster, date_str, bin_edges):
     values = raster.values.flatten()
     values = values[~np.isnan(values)]
+    if len(values) == 0:
+        return {"study_area": config["name"], "date": date_str, "mean_radiance": 0, "median_radiance": 0,
+                "histogram": []}
 
     hist, _ = np.histogram(values, bins=bin_edges)
-
     return {
         "study_area": config["name"],
         "date": date_str,
@@ -54,73 +43,75 @@ def process_daily_slice(config, raster, date_str, bin_edges):
         "histogram": hist.tolist()
     }
 
-
 def download_and_process(config):
     print(f"\n>>> Processing: {config['name']}")
     if not os.path.exists(config['out_dir']): os.makedirs(config['out_dir'])
 
     dates = pd.date_range(start=config['start'], end=config['end']).strftime('%Y-%m-%d').tolist()
-    gdf = gpd.read_file(config['path'])
+
+    # load shapefile and ensure CRS is WGS84
+    gdf = gpd.read_file(config['path']).to_crs("EPSG:4326")
+
     daily_records = []
     bin_edges = np.linspace(0, 100, 11)
 
-    # Attempt full date range
     try:
-        print(f"   Attempting bulk download for {len(dates)} days...")
+        print(f"   Attempting bulk download...")
         with bm.raster(gdf, product_id=Product.VNP46A2, date_range=dates) as ds:
             data_in_memory = ds['DNB_BRDF-Corrected_NTL'].load()
 
-        # If successful, process all time slices in RAM
         for i, date_val in enumerate(data_in_memory.time.values):
             date_str = pd.to_datetime(date_val).strftime('%Y-%m-%d')
             daily_slice = data_in_memory.isel(time=i)
 
-            # optional: save raster
+            # Assign CRS then clip to the actual polygon
+            daily_slice.rio.write_crs("EPSG:4326", inplace=True)
+            if 'lat' in daily_slice.coords:
+                daily_slice = daily_slice.rename({'lat': 'y', 'lon': 'x'})
+
+            # explicitly clip to the study area
+            clipped_slice = daily_slice.rio.clip(gdf.geometry.apply(mapping), gdf.crs)
+
+            # save out
             out_tif = os.path.join(config['out_dir'], f"{config['name']}_{date_str}.tif")
-            daily_slice.rio.to_raster(out_tif)
+            clipped_slice.rio.to_raster(out_tif)
 
-            daily_records.append(process_daily_slice(config, daily_slice, date_str, bin_edges))
+            # run stats save to csv
+            daily_records.append(process_daily_slice(config, clipped_slice, date_str, bin_edges))
 
-    # individual days (slow)
     except Exception as e:
-        if "manifest" in str(e) or "required files could not found" in str(e):
-            print(f"   Manifest error detected. Switching to individual day collection...")
-            for date_str in dates:
-                try:
-                    with bm.raster(gdf, product_id=Product.VNP46A2, date_range=date_str) as ds:
-                        daily_slice = ds['DNB_BRDF-Corrected_NTL'].load().isel(time=0)
+        print(f"   Error: {e}. Switching to individual day collection...")
+        for date_str in dates:
+            try:
+                with bm.raster(gdf, product_id=Product.VNP46A2, date_range=date_str) as ds:
+                    daily_slice = ds['DNB_BRDF-Corrected_NTL'].load().isel(time=0)
 
-                    # optional: save raster
-                    out_tif = os.path.join(config['out_dir'], f"{config['name']}_{date_str}.tif")
-                    daily_slice.rio.to_raster(out_tif)
+                daily_slice.rio.write_crs("EPSG:4326", inplace=True)
+                if 'lat' in daily_slice.coords:
+                    daily_slice = daily_slice.rename({'lat': 'y', 'lon': 'x'})
 
-                    daily_records.append(process_daily_slice(config, daily_slice, date_str, bin_edges))
-                    print(f"   Successfully collected: {date_str}")
+                # Clip individual daily slice
+                clipped_slice = daily_slice.rio.clip(gdf.geometry.apply(mapping), gdf.crs)
 
-                except Exception as day_error:
-                    print(f"   SKIPPING {date_str}: Data truly missing ({day_error})")
-        else:
-            raise e
+                out_tif = os.path.join(config['out_dir'], f"{config['name']}_{date_str}.tif")
+                clipped_slice.rio.to_raster(out_tif)
+                daily_records.append(process_daily_slice(config, clipped_slice, date_str, bin_edges))
+            except Exception as day_error:
+                print(f"   SKIPPING {date_str}: {day_error}")
 
     return daily_records
 
-
-# execute function
 all_results = []
 for config in study_configs:
     try:
         daily_stats = download_and_process(config)
         all_results.extend(daily_stats)
     except Exception as e:
-        print(f"!!! Error on {config['name']}: {e}")
+        print(f"!!! Critical error on {config['name']}: {e}")
 
-# 4. export csv (Will have one row per day per area, average radiance per day)
+# final export
 if all_results:
     master_df = pd.DataFrame(all_results)
-    local_csv = "C:/Users/dredhu01/Desktop/daily_viirs.csv"
-    #was having issues saving to box, this just saves locally and then to box
-    final_box_csv = "C:/Users/dredhu01/Box/CEE0189/output/daily_viirs.csv"
-
+    local_csv = "H:/argentina_take2/argentinastudyarea/argentina/daily_viirs.csv"
     master_df.to_csv(local_csv, index=False)
-    shutil.copy2(local_csv, final_box_csv)
-    print(f"\nSUCCESS: CSV with daily histogram shifts saved to {final_box_csv}")
+    print(f"\nSUCCESS: CSV with daily stats saved to {local_csv}")
